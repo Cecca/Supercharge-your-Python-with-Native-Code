@@ -53,6 +53,18 @@ def dataset_sizes(total, start=SAMPLE_SIZE):
     return sizes
 
 
+def load_completed(path=RESULTS_PATH):
+    """Map (implementation, n, k) -> recorded time for runs already in the CSV."""
+    completed = {}
+    if not os.path.exists(path):
+        return completed
+    with open(path, newline="") as f:
+        for row in csv.DictReader(f):
+            key = (row["implementation"], int(row["n"]), int(row["k"]))
+            completed[key] = float(row["time_seconds"])  # keep latest recorded time
+    return completed
+
+
 def record_result(implementation, n, dim, wcss, elapsed):
     print(f"{implementation}: k={K} n={n} dim={dim} wcss={wcss:.2f} time={elapsed:.4f}s")
     write_header = not os.path.exists(RESULTS_PATH)
@@ -89,6 +101,7 @@ def main():
     download_dataset()
     data = load_data()
 
+    completed = load_completed()
     runners = {"kmeans_a": run_kmeans_a, "sklearn": run_sklearn}
     active = set(runners)
 
@@ -99,7 +112,12 @@ def main():
         for name in list(runners):  # stable order, only run still-active ones
             if name not in active:
                 continue
-            elapsed = runners[name](subset)
+            key = (name, n, K)
+            if key in completed:
+                elapsed = completed[key]
+                print(f"{name}: n={n} already in {RESULTS_PATH} ({elapsed:.4f}s), skipping")
+            else:
+                elapsed = runners[name](subset)
             if elapsed > TIMEOUT_S:
                 print(f"{name} exceeded {TIMEOUT_S}s at n={n}; stopping it.")
                 active.discard(name)
