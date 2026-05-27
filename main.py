@@ -16,6 +16,7 @@ DATASET_PATH = "fashion-mnist-784-euclidean.hdf5"
 SAMPLE_SIZE = 1000
 SEED = 1234
 K = 10
+TIMEOUT_S = 60
 RESULTS_PATH = "results.csv"
 
 
@@ -31,12 +32,25 @@ def download_dataset(url=DATASET_URL, path=DATASET_PATH):
     return path
 
 
-def load_sample(path=DATASET_PATH, sample_size=SAMPLE_SIZE, seed=SEED):
+def load_data(path=DATASET_PATH, seed=SEED):
     with h5py.File(path, "r") as f:
         data = f["train"][:]
-    points = data.tolist()
-    rng = random.Random(seed)
-    return rng.sample(points, sample_size)
+    # Shuffle once so size-n samples are nested prefixes of the same ordering.
+    order = np.random.default_rng(seed).permutation(len(data))
+    return data[order]
+
+
+def dataset_sizes(total, start=SAMPLE_SIZE):
+    """Sizes from `start`, doubling, up to and including the full dataset size."""
+    if total <= start:
+        return [total]
+    sizes = []
+    n = start
+    while n < total:
+        sizes.append(n)
+        n *= 2
+    sizes.append(total)
+    return sizes
 
 
 def record_result(implementation, n, dim, wcss, elapsed):
@@ -49,17 +63,18 @@ def record_result(implementation, n, dim, wcss, elapsed):
         writer.writerow([implementation, n, K, dim, wcss, elapsed])
 
 
-def run_kmeans_a(points):
+def run_kmeans_a(data):
+    points = data.tolist()
     # kmeans_a.random_centroids uses the global random module; seed it for reproducibility.
     random.seed(SEED)
     start = time.perf_counter()
     wcss, _clusters, _centroids = kmeans_a.lloyd(points, K)
     elapsed = time.perf_counter() - start
     record_result("kmeans_a", len(points), len(points[0]), wcss, elapsed)
+    return elapsed
 
 
-def run_sklearn(points):
-    data = np.array(points)
+def run_sklearn(data):
     # n_init=1 matches kmeans_a, which runs from a single random initialization.
     model = KMeans(n_clusters=K, init="random", n_init=1, random_state=SEED)
     start = time.perf_counter()
@@ -67,14 +82,27 @@ def run_sklearn(points):
     elapsed = time.perf_counter() - start
     # inertia_ is the within-cluster sum of squares, same metric as kmeans_a's wcss.
     record_result("sklearn", data.shape[0], data.shape[1], model.inertia_, elapsed)
+    return elapsed
 
 
 def main():
     download_dataset()
-    points = load_sample()
+    data = load_data()
 
-    run_kmeans_a(points)
-    run_sklearn(points)
+    runners = {"kmeans_a": run_kmeans_a, "sklearn": run_sklearn}
+    active = set(runners)
+
+    for n in dataset_sizes(len(data)):
+        if not active:
+            break
+        subset = data[:n]
+        for name in list(runners):  # stable order, only run still-active ones
+            if name not in active:
+                continue
+            elapsed = runners[name](subset)
+            if elapsed > TIMEOUT_S:
+                print(f"{name} exceeded {TIMEOUT_S}s at n={n}; stopping it.")
+                active.discard(name)
 
 
 if __name__ == "__main__":
