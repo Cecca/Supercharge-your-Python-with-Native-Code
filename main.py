@@ -10,6 +10,7 @@ import random
 from sklearn.cluster import KMeans
 
 import kmeans_a
+import kmeans_numpy
 
 DATASET_URL = "http://ann-benchmarks.com/fashion-mnist-784-euclidean.hdf5"
 DATASET_PATH = "fashion-mnist-784-euclidean.hdf5"
@@ -86,6 +87,14 @@ def run_kmeans_a(data):
     return elapsed
 
 
+def run_kmeans_numpy(data):
+    start = time.perf_counter()
+    _assignment, wcss = kmeans_numpy.lloyd(data, K, seed=SEED)
+    elapsed = time.perf_counter() - start
+    record_result("kmeans_numpy", data.shape[0], data.shape[1], wcss, elapsed)
+    return elapsed
+
+
 def run_sklearn(data):
     # n_init=1 matches kmeans_a, which runs from a single random initialization.
     model = KMeans(n_clusters=K, init="random", n_init=1, random_state=SEED)
@@ -102,7 +111,11 @@ def main():
     data = load_data()
 
     completed = load_completed()
-    runners = {"kmeans_a": run_kmeans_a, "sklearn": run_sklearn}
+    runners = {
+        "kmeans_a": run_kmeans_a,
+        "kmeans_numpy": run_kmeans_numpy,
+        "sklearn": run_sklearn,
+    }
     active = set(runners)
 
     for n in dataset_sizes(len(data)):
