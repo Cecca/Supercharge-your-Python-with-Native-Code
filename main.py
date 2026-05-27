@@ -54,25 +54,25 @@ def dataset_sizes(total, start=SAMPLE_SIZE):
 
 
 def load_completed(path=RESULTS_PATH):
-    """Map (implementation, n, k) -> recorded time for runs already in the CSV."""
+    """Map (implementation, n, k, seed) -> recorded time for runs already in the CSV."""
     completed = {}
     if not os.path.exists(path):
         return completed
     with open(path, newline="") as f:
         for row in csv.DictReader(f):
-            key = (row["implementation"], int(row["n"]), int(row["k"]))
+            key = (row["implementation"], int(row["n"]), int(row["k"]), int(row["seed"]))
             completed[key] = float(row["time_seconds"])  # keep latest recorded time
     return completed
 
 
 def record_result(implementation, n, dim, wcss, elapsed):
-    print(f"{implementation}: k={K} n={n} dim={dim} wcss={wcss:.2f} time={elapsed:.4f}s")
+    print(f"{implementation}: k={K} n={n} dim={dim} seed={SEED} wcss={wcss:.2f} time={elapsed:.4f}s")
     write_header = not os.path.exists(RESULTS_PATH)
     with open(RESULTS_PATH, "a", newline="") as f:
         writer = csv.writer(f)
         if write_header:
-            writer.writerow(["implementation", "n", "k", "dim", "wcss", "time_seconds"])
-        writer.writerow([implementation, n, K, dim, wcss, elapsed])
+            writer.writerow(["implementation", "n", "k", "dim", "seed", "wcss", "time_seconds"])
+        writer.writerow([implementation, n, K, dim, SEED, wcss, elapsed])
 
 
 def run_kmeans_a(data):
@@ -112,7 +112,7 @@ def main():
         for name in list(runners):  # stable order, only run still-active ones
             if name not in active:
                 continue
-            key = (name, n, K)
+            key = (name, n, K, SEED)
             if key in completed:
                 elapsed = completed[key]
                 print(f"{name}: n={n} already in {RESULTS_PATH} ({elapsed:.4f}s), skipping")
