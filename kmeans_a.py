@@ -76,7 +76,7 @@ def lloyd(points, k, max_iter=300, epsilon=1e-4):
     for iter in range(max_iter):
         new_centroids, new_clusters = lloyd_iter(points, centroids)
         new_wcss = cost(new_clusters, new_centroids)
-        if wcss - new_wcss <= epsilon:
+        if wcss - new_wcss <= epsilon * wcss:  # relative WCSS decrease
             break
         centroids = new_centroids
         clusters = new_clusters

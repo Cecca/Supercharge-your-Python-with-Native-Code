@@ -28,7 +28,7 @@ def lloyd(points, k, max_iter=300, epsilon=1e-4, seed=None):
 
     for _ in range(max_iter):
         assignment, wcss = assign_closest(points, centroids, points_sq)
-        if prev_wcss - wcss < epsilon:
+        if prev_wcss - wcss < epsilon * prev_wcss:  # relative WCSS decrease
             return assignment, wcss
         prev_wcss = wcss
 
