@@ -1,27 +1,17 @@
 import numpy as np
 
-def euclidean_squared(x, y):
-    diff = x - y
-    return np.dot(diff, diff)
 
+def assign_closest(points, centroids, points_sq=None):
+    # Vectorized over all points and centroids at once via
+    # ||x - c||^2 = ||x||^2 - 2 x.c + ||c||^2, then pick the nearest centroid.
+    if points_sq is None:
+        points_sq = np.einsum("ij,ij->i", points, points)
+    c_sq = np.einsum("ij,ij->i", centroids, centroids)
+    d = points_sq[:, None] - 2.0 * (points @ centroids.T) + c_sq[None, :]
+    np.maximum(d, 0.0, out=d)  # rounding can push exact zeros slightly negative
 
-def assign_closest(points, centroids):
-    k = centroids.shape[0]
-    n = points.shape[0]
-    assignment = np.zeros(n)
-
-    wcss = 0.0
-    for i, point in enumerate(points):
-        closest = 0
-        min_distance = euclidean_squared(point, centroids[closest])
-        for j in range(1, k):
-            d = euclidean_squared(point, centroids[j])
-            if d < min_distance:
-                min_distance = d
-                closest = j
-        assignment[i] = closest
-        wcss += min_distance
-
+    assignment = np.argmin(d, axis=1)
+    wcss = float(np.min(d, axis=1).sum(dtype=np.float64))
     return assignment, wcss
 
 
@@ -31,21 +21,21 @@ def random_centroids(points, k, seed=None):
     return points[idx]
 
 
-def lloyd(points, k, max_iter=20, epsilon=0.0, seed=None):
+def lloyd(points, k, max_iter=300, epsilon=1e-4, seed=None):
     centroids = random_centroids(points, k, seed)
+    points_sq = np.einsum("ij,ij->i", points, points)  # constant across iterations
     prev_wcss = np.inf
 
     for _ in range(max_iter):
-        assignment, wcss = assign_closest(points, centroids)
+        assignment, wcss = assign_closest(points, centroids, points_sq)
         if prev_wcss - wcss < epsilon:
             return assignment, wcss
         prev_wcss = wcss
 
-        centroids = np.zeros_like(centroids)
+        new_centroids = np.zeros_like(centroids)
         for i in range(k):
-            centroids[i, :] = np.mean(points[assignment == i], axis=0)
+            members = points[assignment == i]
+            new_centroids[i] = members.mean(axis=0) if len(members) else centroids[i]
+        centroids = new_centroids
 
     return assignment, wcss
-
-
- 

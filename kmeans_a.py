@@ -68,7 +68,7 @@ def random_centroids(points, k):
     return random.sample(points, k)
 
 
-def lloyd(points, k, max_iter=20, epsilon=0.0):
+def lloyd(points, k, max_iter=300, epsilon=1e-4):
     centroids = random_centroids(points, k)
     clusters = assign_closest(points, centroids)
     wcss = cost(clusters, centroids)
