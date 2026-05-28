@@ -6,7 +6,13 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "h5py>=3.16.0",
+    "matplotlib>=3.10.9",
     "memray>=1.19.3",
     "numba>=0.65.1",
     "scikit-learn>=1.8.0",
+]
+
+[dependency-groups]
+dev = [
+    "nanobind>=2.12.0",
 ]
