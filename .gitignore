@@ -9,6 +9,7 @@ wheels/
 # Virtual environments
 .venv
 fashion-mnist-784-euclidean.hdf5
+glove-100-angular.hdf5
 numpy.prof
 memray-flamegraph-memray.html
 memray.bin
