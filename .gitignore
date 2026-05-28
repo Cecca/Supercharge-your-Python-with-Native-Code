@@ -9,3 +9,4 @@ wheels/
 # Virtual environments
 .venv
 fashion-mnist-784-euclidean.hdf5
+numpy.prof

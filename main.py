@@ -1,5 +1,8 @@
+import argparse
+import cProfile
 import csv
 import os
+import pstats
 import shutil
 import time
 import urllib.request
@@ -117,24 +120,63 @@ def run_sklearn(data):
     return elapsed
 
 
+RUNNERS = {
+    "kmeans_a": run_kmeans_a,
+    "kmeans_numpy": run_kmeans_numpy,
+    "kmeans_numba": run_kmeans_numba,
+    "sklearn": run_sklearn,
+}
+
+
+def _load_subset(n):
+    download_dataset()
+    data = load_data()
+    if n > len(data):
+        raise SystemExit(f"requested n={n} exceeds dataset size {len(data)}")
+    return data[:n]
+
+
+def profile_run(algorithm, n, output=None, top=30):
+    subset = _load_subset(n)
+    runner = RUNNERS[algorithm]
+    profiler = cProfile.Profile()
+    profiler.enable()
+    runner(subset)
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats("cumulative")
+    stats.print_stats(top)
+    if output:
+        stats.dump_stats(output)
+        print(f"Profile written to {output}")
+
+
+def memray_run(algorithm, n, output, native=False, follow_fork=False):
+    try:
+        import memray
+    except ImportError as e:
+        raise SystemExit("memray is not installed. Try: pip install memray") from e
+    if os.path.exists(output):
+        raise SystemExit(f"{output} already exists; pick a new path or delete it.")
+    subset = _load_subset(n)
+    runner = RUNNERS[algorithm]
+    with memray.Tracker(output, native_traces=native, follow_fork=follow_fork):
+        runner(subset)
+    print(f"Allocation profile written to {output}")
+    print(f"View with: memray flamegraph {output}   (or: memray tree {output})")
+
+
 def main():
     download_dataset()
     data = load_data()
 
     completed = load_completed()
-    runners = {
-        "kmeans_a": run_kmeans_a,
-        "kmeans_numpy": run_kmeans_numpy,
-        "kmeans_numba": run_kmeans_numba,
-        "sklearn": run_sklearn,
-    }
-    active = set(runners)
+    active = set(RUNNERS)
 
     for n in dataset_sizes(len(data)):
         if not active:
             break
         subset = data[:n]
-        for name in list(runners):  # stable order, only run still-active ones
+        for name in list(RUNNERS):  # stable order, only run still-active ones
             if name not in active:
                 continue
             key = (name, n, K, SEED)
@@ -142,11 +184,40 @@ def main():
                 elapsed = completed[key]
                 print(f"{name}: n={n} already in {RESULTS_PATH} ({elapsed:.4f}s), skipping")
             else:
-                elapsed = runners[name](subset)
+                elapsed = RUNNERS[name](subset)
             if elapsed > TIMEOUT_S:
                 print(f"{name} exceeded {TIMEOUT_S}s at n={n}; stopping it.")
                 active.discard(name)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Benchmark k-means implementations.")
+    parser.add_argument(
+        "--profile",
+        metavar="ALGORITHM",
+        choices=sorted(RUNNERS),
+        help="Run a single algorithm under cProfile instead of the full benchmark.",
+    )
+    parser.add_argument(
+        "--n",
+        type=int,
+        default=SAMPLE_SIZE,
+        help="Number of points to use when profiling (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--profile-output",
+        metavar="PATH",
+        help="If set with --profile, dump the pstats profile to this file.",
+    )
+    parser.add_argument(
+        "--profile-top",
+        type=int,
+        default=30,
+        help="Number of rows to print from the profile (default: %(default)s).",
+    )
+    args = parser.parse_args()
+
+    if args.profile:
+        profile_run(args.profile, args.n, output=args.profile_output, top=args.profile_top)
+    else:
+        main()
