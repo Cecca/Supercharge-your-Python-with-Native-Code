@@ -215,9 +215,31 @@ if __name__ == "__main__":
         default=30,
         help="Number of rows to print from the profile (default: %(default)s).",
     )
+    parser.add_argument(
+        "--memray",
+        metavar="ALGORITHM",
+        choices=sorted(RUNNERS),
+        help="Run a single algorithm under memray allocation tracking.",
+    )
+    parser.add_argument(
+        "--memray-output",
+        metavar="PATH",
+        default="memray.bin",
+        help="Output file for the memray capture (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--memray-native",
+        action="store_true",
+        help="Capture native stack traces (slower, but resolves NumPy/Numba frames).",
+    )
     args = parser.parse_args()
+
+    if args.profile and args.memray:
+        parser.error("--profile and --memray are mutually exclusive.")
 
     if args.profile:
         profile_run(args.profile, args.n, output=args.profile_output, top=args.profile_top)
+    elif args.memray:
+        memray_run(args.memray, args.n, output=args.memray_output, native=args.memray_native)
     else:
         main()

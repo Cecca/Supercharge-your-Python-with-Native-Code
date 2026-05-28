@@ -10,3 +10,5 @@ wheels/
 .venv
 fashion-mnist-784-euclidean.hdf5
 numpy.prof
+memray-flamegraph-memray.html
+memray.bin

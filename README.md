@@ -1,1 +1,2 @@
-- using snakeviz to see profiles
+- using snakeviz to see profiles from cProfile
+- using memray to profile memory usage
