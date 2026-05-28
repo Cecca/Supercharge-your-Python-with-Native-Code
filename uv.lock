@@ -725,7 +725,7 @@ wheels = [
 [[package]]
 name = "supercharge-your-python-with-native-code"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "h5py" },
     { name = "matplotlib" },

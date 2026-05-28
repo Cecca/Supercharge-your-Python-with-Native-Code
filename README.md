@@ -4,6 +4,6 @@
 - using snakeviz to see profiles from cProfile
 - using memray to profile memory usage
 
----
+# Ownership and memory
 
-![](/performance.png)
+- this is important when returning arrays from the C++ code

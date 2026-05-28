@@ -15,6 +15,7 @@ from sklearn.cluster import KMeans
 import kmeans_a
 import kmeans_numpy
 import kmeans_numba
+import supercharge
 
 DATASETS = {
     "fashion-mnist": {
@@ -146,6 +147,18 @@ def run_kmeans_numba(data, dataset):
     return elapsed
 
 
+def run_supercharge(data, dataset):
+    # The C++ binding requires a C-contiguous float32 array; coerce outside the
+    # timed region (a no-op when the data is already float32), mirroring how
+    # run_kmeans_a does its list conversion before timing.
+    points = np.ascontiguousarray(data, dtype=np.float32)
+    start = time.perf_counter()
+    _assignment, wcss = supercharge.kmeans(points, K, 300, 1e-4, SEED)
+    elapsed = time.perf_counter() - start
+    record_result(dataset, "supercharge", data.shape[0], data.shape[1], wcss, elapsed)
+    return elapsed
+
+
 def run_sklearn(data, dataset):
     # n_init=1 matches kmeans_a, which runs from a single random initialization.
     model = KMeans(n_clusters=K, init="random", n_init=1, random_state=SEED)
@@ -161,6 +174,7 @@ RUNNERS = {
     "kmeans_a": run_kmeans_a,
     "kmeans_numpy": run_kmeans_numpy,
     "kmeans_numba": run_kmeans_numba,
+    "supercharge": run_supercharge,
     "sklearn": run_sklearn,
 }
 

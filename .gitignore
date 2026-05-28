@@ -13,3 +13,7 @@ glove-100-angular.hdf5
 numpy.prof
 memray-flamegraph-memray.html
 memray.bin
+
+/build
+.cache/clangd/index
+compile_commands.json
