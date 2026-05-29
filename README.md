@@ -1,3 +1,9 @@
+# Building the projet
+
+- Say how to use uv
+- how to install nanobind
+- mention that you need to run cmake with the venv activated
+
 # Profiling code
 
 - using cProfile

@@ -17,3 +17,5 @@ memray.bin
 /build
 .cache/clangd/index
 compile_commands.json
+profile.prof
+performance.png

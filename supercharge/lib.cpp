@@ -129,6 +129,10 @@ float assign(const float *const points, const size_t n, const size_t dimensions,
              const size_t k, const std::vector<float> &centroids,
              std::vector<size_t> &assignment) {
   float wcss = 0.0;
+  // Each point is assigned independently: assignment[i] is written by exactly
+  // one iteration and wcss is a sum, so the loop parallelises cleanly with a
+  // reduction on wcss.
+#pragma omp parallel for reduction(+ : wcss) schedule(static)
   for (size_t i = 0; i < n; i++) {
     size_t closest = 0;
     float mindist = squared_euclidean_distance(
