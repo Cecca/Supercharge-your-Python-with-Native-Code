@@ -3,6 +3,7 @@ import csv
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 RESULTS_PATH = "results.csv"
 OUTPUT_PATH = "performance.png"

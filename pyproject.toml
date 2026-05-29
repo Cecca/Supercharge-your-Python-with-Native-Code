@@ -10,6 +10,7 @@ dependencies = [
     "memray>=1.19.3",
     "numba>=0.65.1",
     "scikit-learn>=1.8.0",
+    "seaborn>=0.13.2",
 ]
 
 [dependency-groups]

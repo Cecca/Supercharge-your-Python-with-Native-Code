@@ -31,7 +31,7 @@ DEFAULT_DATASET = "fashion-mnist"
 SAMPLE_SIZE = 1000
 SEED = 1234
 K = 10
-TIMEOUT_S = 60
+TIMEOUT_S = 20
 RESULTS_PATH = "results.csv"
 
 
@@ -72,28 +72,13 @@ def dataset_sizes(total, start=SAMPLE_SIZE):
 RESULTS_HEADER = ["dataset", "implementation", "n", "k", "dim", "seed", "wcss", "time_seconds"]
 
 
-def migrate_results(path=None):
-    """Add a `dataset` column to legacy rows (assumed to be fashion-mnist)."""
-    if path is None:
-        path = RESULTS_PATH
-    if not os.path.exists(path):
-        return
-    with open(path, newline="") as f:
-        reader = csv.reader(f)
-        header = next(reader, None)
-        if header is None or "dataset" in header:
-            return
-        rows = list(reader)
-    with open(path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["dataset"] + header)
-        for row in rows:
-            writer.writerow([DEFAULT_DATASET] + row)
-    print(f"Migrated {path}: added dataset column (filled as {DEFAULT_DATASET}).")
-
 
 def load_completed(path=RESULTS_PATH):
-    """Map (dataset, implementation, n, k, seed) -> recorded time for runs in the CSV."""
+    """Map (dataset, implementation, n, k, seed) -> list of recorded times in the CSV.
+
+    A configuration may appear multiple times (one row per run), so we collect
+    every recorded time to know how many runs already exist for it.
+    """
     completed = {}
     if not os.path.exists(path):
         return completed
@@ -101,7 +86,7 @@ def load_completed(path=RESULTS_PATH):
         for row in csv.DictReader(f):
             dataset = row.get("dataset") or DEFAULT_DATASET
             key = (dataset, row["implementation"], int(row["n"]), int(row["k"]), int(row["seed"]))
-            completed[key] = float(row["time_seconds"])  # keep latest recorded time
+            completed.setdefault(key, []).append(float(row["time_seconds"]))
     return completed
 
 
@@ -216,8 +201,7 @@ def memray_run(algorithm, n, output, dataset=DEFAULT_DATASET, native=False, foll
     print(f"View with: memray flamegraph {output}   (or: memray tree {output})")
 
 
-def main():
-    migrate_results()
+def main(runs=1):
     completed = load_completed()
 
     for dataset in DATASETS:
@@ -233,15 +217,17 @@ def main():
                 if name not in active:
                     continue
                 key = (dataset, name, n, K, SEED)
-                if key in completed:
-                    elapsed = completed[key]
+                done = completed.get(key, [])
+                if done:
                     print(
-                        f"{name}: dataset={dataset} n={n} already in {RESULTS_PATH} "
-                        f"({elapsed:.4f}s), skipping"
+                        f"{name}: dataset={dataset} n={n} already has {len(done)}/{runs} "
+                        f"run(s) in {RESULTS_PATH}, skipping those"
                     )
-                else:
+                # Top up to `runs` runs, reusing rows already in the CSV.
+                elapsed = done[-1] if done else None
+                for _ in range(len(done), runs):
                     elapsed = RUNNERS[name](subset, dataset)
-                if elapsed > TIMEOUT_S:
+                if elapsed is not None and elapsed > TIMEOUT_S:
                     print(
                         f"{name} exceeded {TIMEOUT_S}s at n={n} on {dataset}; "
                         f"stopping it for this dataset."
@@ -297,7 +283,16 @@ if __name__ == "__main__":
         default=DEFAULT_DATASET,
         help="Dataset to use for --profile/--memray (default: %(default)s).",
     )
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=1,
+        help="Number of runs to record per configuration, for averaging (default: %(default)s).",
+    )
     args = parser.parse_args()
+
+    if args.runs < 1:
+        parser.error("--runs must be at least 1.")
 
     if args.profile and args.memray:
         parser.error("--profile and --memray are mutually exclusive.")
@@ -313,4 +308,4 @@ if __name__ == "__main__":
             dataset=args.dataset, native=args.memray_native,
         )
     else:
-        main()
+        main(runs=args.runs)
