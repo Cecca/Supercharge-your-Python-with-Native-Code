@@ -9,6 +9,8 @@ dependencies = [
     "matplotlib>=3.10.9",
     "memray>=1.19.3",
     "numba>=0.65.1",
+    "polars",
+    "pyarrow",
     "scikit-learn>=1.8.0",
     "seaborn>=0.13.2",
 ]

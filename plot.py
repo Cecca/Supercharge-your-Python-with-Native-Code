@@ -1,62 +1,49 @@
 import argparse
-import csv
-from collections import defaultdict
 
 import matplotlib.pyplot as plt
+import polars as pl
 import seaborn as sns
 
 RESULTS_PATH = "results.csv"
 OUTPUT_PATH = "performance.png"
 
-IMPL_STYLE = {
-    "kmeans_a":     {"color": "#d62728", "marker": "o"},
-    "kmeans_numpy": {"color": "#1f77b4", "marker": "s"},
-    "kmeans_numba": {"color": "#2ca02c", "marker": "^"},
-    "sklearn":      {"color": "#9467bd", "marker": "D"},
-}
-
-
 def load_results(path):
-    # (dataset, implementation) -> list of (n, time_seconds)
-    series = defaultdict(list)
-    with open(path, newline="") as f:
-        for row in csv.DictReader(f):
-            series[(row["dataset"], row["implementation"])].append(
-                (int(row["n"]), float(row["time_seconds"]))
-            )
-    for key in series:
-        series[key].sort()
-    return series
-
-
-def plot(series, output):
-    datasets = sorted({d for d, _ in series})
-    implementations = sorted({i for _, i in series})
-
-    fig, axes = plt.subplots(
-        1, len(datasets), figsize=(6 * len(datasets), 5), sharey=True, squeeze=False,
+    # Average the (possibly multiple) runs for each (dataset, implementation, n).
+    return (
+        pl.read_csv(path)
+        .group_by("dataset", "implementation", "n")
+        .agg(pl.col("time_seconds").mean())
+        .sort("dataset", "implementation", "n")
     )
-    axes = axes[0]
 
-    for ax, dataset in zip(axes, datasets):
-        for impl in implementations:
-            points = series.get((dataset, impl), [])
-            if not points:
-                continue
-            xs, ys = zip(*points)
-            style = IMPL_STYLE.get(impl, {})
-            ax.plot(xs, ys, label=impl, linewidth=1.5, markersize=6, **style)
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_xlabel("n (points)")
-        ax.set_title(dataset)
-        ax.grid(True, which="both", linestyle=":", alpha=0.5)
 
-    axes[0].set_ylabel("time (s)")
-    axes[-1].legend(loc="best", frameon=True)
-    fig.suptitle("k-means runtime by implementation")
-    fig.tight_layout()
-    fig.savefig(output, dpi=150)
+def plot(df, output):
+    implementations = sorted(df["implementation"].unique())
+
+    sns.set_theme(style="whitegrid")
+    grid = sns.relplot(
+        data=df.to_pandas(),
+        x="n",
+        y="time_seconds",
+        hue="implementation",
+        style="implementation",
+        col="dataset",
+        kind="line",
+        # palette=palette,
+        markers=True,
+        hue_order=implementations,
+        style_order=implementations,
+        markersize=8,
+        linewidth=1.5,
+        facet_kws={"sharey": True},
+    )
+
+    grid.set(xscale="log", yscale="log")
+    grid.set_axis_labels("n (points)", "time (s)")
+    grid.set_titles("{col_name}")
+    grid.figure.suptitle("k-means runtime by implementation")
+    grid.figure.tight_layout()
+    grid.savefig(output, dpi=150)
     print(f"Wrote {output}")
 
 
@@ -67,9 +54,9 @@ if __name__ == "__main__":
     parser.add_argument("--show", action="store_true", help="Also display the figure interactively.")
     args = parser.parse_args()
 
-    series = load_results(args.input)
-    if not series:
+    df = load_results(args.input)
+    if df.is_empty():
         raise SystemExit(f"No rows found in {args.input}")
-    plot(series, args.output)
+    plot(df, args.output)
     if args.show:
         plt.show()
