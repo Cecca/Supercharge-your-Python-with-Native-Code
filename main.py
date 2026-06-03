@@ -12,8 +12,9 @@ import numpy as np
 import random
 from sklearn.cluster import KMeans
 
-import kmeans_a
+import kmeans_naive
 import kmeans_numpy
+import kmeans_numpy_a
 import kmeans_numba
 import supercharge
 
@@ -103,22 +104,29 @@ def record_result(dataset, implementation, n, dim, wcss, elapsed):
         writer.writerow([dataset, implementation, n, K, dim, SEED, wcss, elapsed])
 
 
-def run_kmeans_a(data, dataset):
+def run_kmeans_naive(data, dataset):
     points = data.tolist()
-    # kmeans_a.random_centroids uses the global random module; seed it for reproducibility.
+    # kmeans_naive.random_centroids uses the global random module; seed it for reproducibility.
     random.seed(SEED)
     start = time.perf_counter()
-    wcss, _clusters, _centroids = kmeans_a.lloyd(points, K)
+    wcss, _clusters, _centroids = kmeans_naive.lloyd(points, K, epsilon=0, max_iter=20)
     elapsed = time.perf_counter() - start
-    record_result(dataset, "kmeans_a", len(points), len(points[0]), wcss, elapsed)
+    record_result(dataset, "kmeans_naive", len(points), len(points[0]), wcss, elapsed)
     return elapsed
 
 
 def run_kmeans_numpy(data, dataset):
     start = time.perf_counter()
-    _assignment, wcss = kmeans_numpy.lloyd(data, K, seed=SEED)
+    _assignment, wcss = kmeans_numpy.lloyd(data, K, seed=SEED, epsilon=0, max_iter=20)
     elapsed = time.perf_counter() - start
     record_result(dataset, "kmeans_numpy", data.shape[0], data.shape[1], wcss, elapsed)
+    return elapsed
+
+def run_kmeans_numpy_a(data, dataset):
+    start = time.perf_counter()
+    _assignment, wcss = kmeans_numpy_a.lloyd(data, K, seed=SEED, epsilon=0, max_iter=20)
+    elapsed = time.perf_counter() - start
+    record_result(dataset, "kmeans_numpy_a", data.shape[0], data.shape[1], wcss, elapsed)
     return elapsed
 
 
@@ -126,7 +134,7 @@ def run_kmeans_numba(data, dataset):
     # Warm up the JIT on a tiny slice so compilation stays out of the timed run.
     kmeans_numba.lloyd(data[: 2 * K], K, max_iter=1, seed=SEED)
     start = time.perf_counter()
-    _assignment, wcss = kmeans_numba.lloyd(data, K, seed=SEED)
+    _assignment, wcss = kmeans_numba.lloyd(data, K, seed=SEED, epsilon=0, max_iter=20)
     elapsed = time.perf_counter() - start
     record_result(dataset, "kmeans_numba", data.shape[0], data.shape[1], wcss, elapsed)
     return elapsed
@@ -135,29 +143,30 @@ def run_kmeans_numba(data, dataset):
 def run_supercharge(data, dataset):
     # The C++ binding requires a C-contiguous float32 array; coerce outside the
     # timed region (a no-op when the data is already float32), mirroring how
-    # run_kmeans_a does its list conversion before timing.
+    # run_kmeans_naive does its list conversion before timing.
     points = np.ascontiguousarray(data, dtype=np.float32)
     start = time.perf_counter()
-    _assignment, wcss = supercharge.kmeans(points, K, 300, 1e-4, SEED)
+    _assignment, wcss = supercharge.kmeans(points, K, 20, 0, SEED)
     elapsed = time.perf_counter() - start
     record_result(dataset, "supercharge", data.shape[0], data.shape[1], wcss, elapsed)
     return elapsed
 
 
 def run_sklearn(data, dataset):
-    # n_init=1 matches kmeans_a, which runs from a single random initialization.
-    model = KMeans(n_clusters=K, init="random", n_init=1, random_state=SEED)
+    # n_init=1 matches kmeans_naive, which runs from a single random initialization.
+    model = KMeans(n_clusters=K, init="random", n_init=1, random_state=SEED, max_iter=20, tol=0)
     start = time.perf_counter()
     model.fit(data)
     elapsed = time.perf_counter() - start
-    # inertia_ is the within-cluster sum of squares, same metric as kmeans_a's wcss.
+    # inertia_ is the within-cluster sum of squares, same metric as kmeans_naive's wcss.
     record_result(dataset, "sklearn", data.shape[0], data.shape[1], model.inertia_, elapsed)
     return elapsed
 
 
 RUNNERS = {
-    "kmeans_a": run_kmeans_a,
+    "kmeans_naive": run_kmeans_naive,
     "kmeans_numpy": run_kmeans_numpy,
+    "kmeans_numpy_a": run_kmeans_numpy_a,
     "kmeans_numba": run_kmeans_numba,
     "supercharge": run_supercharge,
     "sklearn": run_sklearn,

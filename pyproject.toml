@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "h5py>=3.16.0",
+    "joblib>=1.5.3",
     "matplotlib>=3.10.9",
     "memray>=1.19.3",
     "numba>=0.65.1",
@@ -13,6 +14,7 @@ dependencies = [
     "pyarrow",
     "scikit-learn>=1.8.0",
     "seaborn>=0.13.2",
+    "umap-learn>=0.5.12",
 ]
 
 [dependency-groups]
