@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def assign_closest(points, centroids, points_sq=None):
+def assign_closest(points, centroids):
     n = points.shape[0]
     k = centroids.shape[0]
     assignment = np.zeros(n)
@@ -30,11 +30,10 @@ def random_centroids(points, k, seed=None):
 
 def lloyd(points, k, max_iter=300, epsilon=1e-4, seed=None):
     centroids = random_centroids(points, k, seed)
-    points_sq = np.einsum("ij,ij->i", points, points)  # constant across iterations
     prev_wcss = np.inf
 
     for _ in range(max_iter):
-        assignment, wcss = assign_closest(points, centroids, points_sq)
+        assignment, wcss = assign_closest(points, centroids)
         if prev_wcss - wcss < epsilon * prev_wcss:  # relative WCSS decrease
             return assignment, wcss
         prev_wcss = wcss

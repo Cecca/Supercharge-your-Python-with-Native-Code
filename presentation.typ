@@ -20,6 +20,7 @@
 #set text(font: "Lato")
 
 #show raw.where(block: true, lang: "python"): set text(size: .8em)
+#show raw.where(block: true, lang: "profile"): set text(size: .8em)
 
 #title-slide[]
 
@@ -278,7 +279,7 @@ stats.dump_stats("profile.prof") # output file (used later)
 
 == The output
 
-```
+```profile
 kmeans_naive: dataset=fashion-mnist k=10 n=10000 dim=784 seed=1234 wcss=21068242817.66 time=49.8400s
          2300596 function calls (2300592 primitive calls) in 50.010 seconds
 
@@ -369,9 +370,41 @@ def assign_closest(points, centroids):
     return assignment, wcss
 ```
 
-==
+== 
 
 #image("imgs/performance-numpy.png")
+
+== Where is time being spent?
+
+```profile
+kmeans_numpy_a: dataset=fashion-mnist k=10 n=10000 dim=784 seed=1234 wcss=21061181440.00 time=6.3214s
+         16002380 function calls in 6.322 seconds
+
+   Ordered by: cumulative time
+   List reduced from 54 to 30 due to restriction <30>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    6.322    6.322 /home/matteo/Work/Supercharge-your-Python-with-Native-Code/main.py:125(run_kmeans_numpy_a)
+        1    0.076    0.076    6.321    6.321 /home/matteo/Work/Supercharge-your-Python-with-Native-Code/kmeans_numpy_a.py:31(lloyd)
+       20    2.205    0.110    6.211    0.311 /home/matteo/Work/Supercharge-your-Python-with-Native-Code/kmeans_numpy_a.py:4(assign_closest)
+  2000000    1.895    0.000    3.872    0.000 /home/matteo/Work/Supercharge-your-Python-with-Native-Code/.venv/lib/python3.13/site-packages/numpy/linalg/_linalg.py:2599(norm)
+  2000000    0.927    0.000    0.927    0.000 {method 'dot' of 'numpy.ndarray' objects}
+  2000000    0.286    0.000    0.420    0.000 /home/matteo/Work/Supercharge-your-Python-with-Native-Code/.venv/lib/python3.13/site-packages/numpy/linalg/_linalg.py:168(isComplexType)
+  2000000    0.313    0.000    0.313    0.000 {method 'ravel' of 'numpy.ndarray' objects}
+  4000400    0.292    0.000    0.292    0.000 {built-in method builtins.issubclass}
+  2000000    0.159    0.000    0.159    0.000 {built-in method numpy.asarray}
+```
+
+==
+
+Looking at the profile, clearly most of the time is still spent in the distance
+computation (`norm`)
+
+#image("imgs/profile-numpy.png")
+
+#focus-slide[
+  The bottleneck is still the distance computation, and we have a lot of ground to cover to reach sklearn
+]
 
 = Optimizing with `numba`
 

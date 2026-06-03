@@ -43,6 +43,13 @@ def plot(df, output, implementations=None):
     grid.set(xscale="log", yscale="log")
     grid.set_axis_labels("n (points)", "time (s)")
     grid.set_titles("{col_name}")
+
+    # Move the legend from the figure margin into the right side of the first panel.
+    if grid._legend is not None:
+        grid._legend.remove()
+    first_ax = grid.axes.flat[0]
+    handles, labels = first_ax.get_legend_handles_labels()
+    first_ax.legend(handles, labels, title="implementation", loc="center right")
     grid.figure.suptitle("k-means runtime by implementation")
     grid.figure.tight_layout()
     grid.savefig(output, dpi=150)
