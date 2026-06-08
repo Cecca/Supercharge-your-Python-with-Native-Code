@@ -1,5 +1,4 @@
-import argparse
-import cProfile
+import argparse import cProfile
 import csv
 import os
 import pstats
@@ -14,7 +13,7 @@ from sklearn.cluster import KMeans
 
 import kmeans_naive
 import kmeans_numpy
-import kmeans_numpy_a
+import kmeans_numpy_naive
 import kmeans_numba
 import supercharge
 
@@ -122,11 +121,11 @@ def run_kmeans_numpy(data, dataset):
     record_result(dataset, "kmeans_numpy", data.shape[0], data.shape[1], wcss, elapsed)
     return elapsed
 
-def run_kmeans_numpy_a(data, dataset):
+def run_kmeans_numpy_naive(data, dataset):
     start = time.perf_counter()
-    _assignment, wcss = kmeans_numpy_a.lloyd(data, K, seed=SEED, epsilon=0, max_iter=20)
+    _assignment, wcss = kmeans_numpy_naive.lloyd(data, K, seed=SEED, epsilon=0, max_iter=20)
     elapsed = time.perf_counter() - start
-    record_result(dataset, "kmeans_numpy_a", data.shape[0], data.shape[1], wcss, elapsed)
+    record_result(dataset, "kmeans_numpy_naive", data.shape[0], data.shape[1], wcss, elapsed)
     return elapsed
 
 
@@ -166,7 +165,7 @@ def run_sklearn(data, dataset):
 RUNNERS = {
     "kmeans_naive": run_kmeans_naive,
     "kmeans_numpy": run_kmeans_numpy,
-    "kmeans_numpy_a": run_kmeans_numpy_a,
+    "kmeans_numpy_naive": run_kmeans_numpy_naive,
     "kmeans_numba": run_kmeans_numba,
     "supercharge": run_supercharge,
     "sklearn": run_sklearn,

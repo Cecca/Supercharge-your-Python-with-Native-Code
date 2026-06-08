@@ -23,6 +23,7 @@ Each file solves the same problem; comparing them is the point of the course.
 | File | Approach | What to look at |
 | --- | --- | --- |
 | `kmeans_a.py` | Pure Python, lists and loops | The baseline. Readable, and slow. |
+| `kmeans_numpy_naive.py` | Data stored with NumPy | Points are NumPy arrays. Faster but still far from good. |
 | `kmeans_numpy.py` | Vectorised with NumPy | The whole distance matrix in a few array expressions (`\|\|x-c\|\|² = \|\|x\|\|² - 2x·c + \|\|c\|\|²`). |
 | `kmeans_numba.py` | JIT-compiled with Numba | The same scalar loops as the baseline, but `@njit(parallel=True, fastmath=True)`; the n×k distance matrix is never materialised. |
 | `supercharge/` | Native C++ via nanobind | Hand-written AVX2 + FMA distance kernel, OpenMP-parallelised assignment, exposed to Python as the `supercharge` module. |
