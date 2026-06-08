@@ -3,7 +3,6 @@
 #include "nanobind/ndarray.h"
 
 namespace nb = nanobind;
-using namespace nb::literals;
 
 nb::tuple
 kmeans_wrapper(const nb::ndarray<float, nb::ndim<2>, nb::c_contig> &points,

@@ -16,6 +16,18 @@ def load_results(path):
         .sort("dataset", "implementation", "n")
     )
 
+def speedups(df):
+    baseline = df.filter(pl.col("implementation") == "sklearn").select(
+        "dataset", "n", baseline_time="time_seconds"
+    )
+    return (
+        df.join(baseline, on=["dataset", "n"])
+        .with_columns(speedup = pl.col("baseline_time") / pl.col("time_seconds"))
+        .filter(pl.col("n") == pl.col("n").max().over("dataset", "implementation"))
+    )
+
+
+
 
 def plot(df, output, implementations=None):
     if implementations is None or len(implementations) == 0:
@@ -69,6 +81,7 @@ if __name__ == "__main__":
     df = load_results(args.input)
     if df.is_empty():
         raise SystemExit(f"No rows found in {args.input}")
+    print(speedups(df).filter(pl.col("implementation") == "supercharge"))
     plot(df, args.output, implementations)
     if args.show:
         plt.show()

@@ -704,6 +704,333 @@ build-backend = "scikit_build_core.build"
 8. Install rule — `install(TARGETS supercharge LIBRARY DESTINATION .)`. Without it `scikit-build-core` builds the module and then discards it, so import supercharge fails.
 ]
 
-// - writing the kmeans function (basic version)
-// - writing the glue code
-// - setting up the build system
+== The C++ code
+
+#[
+#set text(size: .8em)
+In `lib.hpp` we add this function signature.
+
+```cpp
+std::pair<std::vector<size_t>, float>
+kmeans(const float *const points,
+       const size_t n, const size_t dimensions,
+       const size_t k,
+       const size_t max_iter,
+       const float tol,
+       const uint64_t seed);
+```
+
+Note that:
+- it accepts a simple `const` array of floats
+- it returns a pair of a `std::vector`#footnote[which owns the memory] and the wcss score
+]
+
+== The glue code
+
+The role of the binding layer is to translate between C++ and Python types.
+
+This is the start of `supercharge/wrapper.cpp`:
+
+```cpp
+#include <nanobind/nanobind.h>
+#include "lib.hpp"
+#include "nanobind/ndarray.h"
+
+namespace nb = nanobind;
+```
+
+== The glue code
+
+... and this is the end of the file, which defines a _Python_ function kmeans
+that uses the code of the `kmeans_wrapper` function pointer#footnote[Note the `&` in front of the function name.].
+
+```cpp
+NB_MODULE(supercharge, m) {
+    m.def("kmeans", &kmeans_wrapper);
+}
+```
+
+== The glue code
+
+#cols[
+  #set text(size: .8em)
+  Here is the function doing the translation, which we will review piece by piece.
+][
+#show raw: set text(size: .3em)
+
+```cpp
+nb::tuple
+kmeans_wrapper(const nb::ndarray<float, nb::ndim<2>, nb::c_contig> &points,
+               const size_t k, const size_t max_iter, const float tol,
+               const uint64_t seed) {
+  const float *const pts = points.data();
+  const size_t n = points.shape(0);
+  const size_t dimensions = points.shape(1);
+
+  auto [assignment, wcss] = kmeans(pts, n, dimensions, k, max_iter, tol, seed);
+
+  // move the assignment to the heap, so we can handle
+  // ownership to the Python interpreter
+  auto asmt = new std::vector(std::move(assignment));
+  nb::capsule owner(asmt, [](void *p) noexcept {
+    delete static_cast<std::vector<size_t> *>(p);
+  });
+
+  const size_t size = asmt->size();
+
+  // this is the array metadata that we return
+  nb::ndarray<nb::numpy, size_t, nb::ndim<1>, nb::c_contig> arr(
+      asmt->data(), {size}, owner
+  );
+
+  return nb::make_tuple(arr, wcss);
+}
+```
+]
+
+
+== The glue code: signature
+
+#[
+#set text(size: .9em)
+
+```cpp
+nb::tuple // ← we return a Python pair
+kmeans_wrapper(
+  // ↓ we accept a Numpy array: nanobind has dedicated types
+  const nb::ndarray<float, nb::ndim<2>, nb::c_contig> &points,
+  // ↓ all the other parameters are automatically mapped
+  const size_t k, const size_t max_iter, const float tol,
+  const uint64_t seed
+)
+```
+]
+
+== The glue code: getting the data
+
+#[
+#set text(size: .9em)
+
+The `nb::ndarray` class provides direct access to the backing array.
+It is important to be aware of the data layout (row-major in this case).
+
+```cpp
+  const float *const pts = points.data();
+  const size_t n = points.shape(0);
+  const size_t dimensions = points.shape(1);
+```
+
+The shape methods allow to retrieve the number of rows and columns.
+
+We can now run our code.
+
+```cpp
+  auto [assignment, wcss] =
+      kmeans(pts, n, dimensions, k, max_iter, tol, seed);
+```
+]
+
+== The glue code: who owns the data?
+
+#only(1)[
+Currently, the `assignment` array is a `std::vector`:
+- the `std::vector` object is allocated on the stack
+- the data lives on the heap
+- the data is deallocated once the `std::vector` exits the scope (RAII)
+]
+
+#only(2)[
+#image("imgs/memory.png")
+]
+
+== The glue code: moving data to the heap#footnote[An alternative would be to explicitly copy all
+the data to a new allocation, but we don't want to pay this cost.]
+
+```cpp
+  // move the assignment to the heap, so we can handle
+  // ownership to the Python interpreter
+  auto asmt = new std::vector(std::move(assignment));
+```
+
+#image(width: 80%,"imgs/memory2.png")
+
+== The glue code: handing ownership to Python
+
+The `nb::capsule` class is a container that allows to run custom code
+when the Python garbage collector makes its pass.
+
+```cpp
+  auto asmt = new std::vector(std::move(assignment));
+  nb::capsule owner(asmt, [](void *p) noexcept {
+    delete static_cast<std::vector<size_t> *>(p);
+  });
+```
+
+This allows to run custom code on cleanup.
+
+== The glue code: returning results to Python
+
+```cpp
+  const size_t size = asmt->size();
+
+  // this is the array metadata that we return
+  nb::ndarray<nb::numpy, size_t, nb::ndim<1>, nb::c_contig>
+      arr(
+        asmt->data(), // ← the data
+        {size},       // ← the shape
+        owner         // ← the owning capsule
+      );
+
+  return nb::make_tuple(arr, wcss);
+```
+
+== Optimizations in C++
+
+- Allocate only what's stricly necessary
+- Compute distances with $||x||^2 + ||y||^2 - 2 x y$
+- Use AVX, FMA, loop unrolling in the dot product
+- Only one pass over memory: point assignment and centroid update in one go
+- Handle points in parallel using OpenMP
+
+== How does it fare?
+
+#image("imgs/performance-all.png")
+
+
+#focus-slide[
+  We did it!
+
+  3.2x faster on `fashion`\ 2.2x faster on `glove`!
+]
+
+== Optimization techniques: SIMD
+
+#only(1)[
+- Single Instruction Multiple Data processes multiple data elements in parallel
+- This is architecture specific
+- On `x86` we have the AVX instruction set
+]
+
+#only(2)[#image(width: 50%, "imgs/sisd.png")]
+#only(3)[#image(width: 50%, "imgs/simd.png")]
+
+== Optimization techniques: Fused-Multiply-Add
+
+#only(1)[
+  #cols[
+  #set text(size: .9em)
+  ```cpp
+  float dot_product(
+    float * a,
+    float * b,
+    size_t n
+  ) {
+    float dotp = 0.0;
+    for(size_t i=0; i<n; i++){
+      dotp = a[i] * b[i] + dotp;
+    }
+    return dotp;
+  }
+  ```
+  ][
+    #set text(size: .8em)
+    There are specialized instructions that allow to apply the body of this `for` loop to chunks of 8 floating point values simultaneusly!
+  ]
+]
+
+#only(2)[
+  #cols(columns: (60%, auto))[
+  #set text(size: .75em)
+  ```cpp
+  float dot_product(
+    float * a,
+    float * b,
+    size_t n
+  ) {
+    auto acc = _mm256_setzero_ps();
+    for(size_t i=0; i<n; i=i+8){
+      acc = _mm256_fmadd_ps(
+        _mm256_loadu_ps(a + i),
+        _mm256_loadu_ps(b + i),
+        acc
+      );
+    }
+    return hsum256_scalar(acc);
+  }
+  ```
+  ][
+    #image(width: 80%, "imgs/fma.png")
+  ]
+]
+
+#only(3)[
+  #set text(size: .75em)
+
+  ```cpp
+  float hsum256_scalar(__m256 v) {
+      alignas(32) float tmp[8];
+      // spill the vector to a 32-byte aligned array
+      _mm256_store_ps(tmp, v);
+      float sum = 0.0f;
+      for (int i = 0; i < 8; ++i) {
+          sum += tmp[i];
+      }
+      return sum;
+  }
+  
+  ```
+]
+
+== Optimization techniques: loop unrolling
+
+#cols()[
+  #set text(size: .8em)
+
+  ```cpp
+  float dot_product(
+    float * a,
+    float * b,
+    size_t n
+  ) {
+    float dotp = 0.0;
+    for(size_t i=0; i<n; i++){
+      dotp = a[i] * b[i] + dotp;
+    }
+    return dotp;
+  }
+  ```
+][
+  #set text(size: .6em)
+
+  ```cpp
+  float dot_product(
+    float * a,
+    float * b,
+    size_t n
+  ) {
+    float dotp = 0.0;
+    size_t i=0;
+    for(; i + 4 < n; i += 4){
+      dotp = a[i+0] * b[i+0] + dotp;
+      dotp = a[i+1] * b[i+1] + dotp;
+      dotp = a[i+2] * b[i+2] + dotp;
+      dotp = a[i+3] * b[i+3] + dotp;
+    }
+    for(; i<n; i++){
+      dotp = a[i] * b[i] + dotp;
+    }
+    return dotp;
+  }
+  ```
+]
+
+== Optimization techniques: parallelism
+
+OpenMP is a specification (implemented by different compilers)
+that provides facilities to write parallel code:
+
+- `#pragma omp parallel` defines a parallel region
+- `#pragma omp for` makes the following loop parallel
+- `#pragma omp critical` marks a section as "critical"
+
+
