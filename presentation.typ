@@ -529,7 +529,8 @@ The gap is not closed yet because materializing the entire distance matrix (i.e.
 - Install: `uv add numba`
 - import with `from numba import njit`
 - Use: annotate functions with `@njit`
-- Only a subset of Python is allowed (e.g. no print statements can be used)
+- Some limitations apply
+- Compiles the code on-the-fly on first use
 
 
 == Using `numba`
@@ -607,5 +608,102 @@ def _assign(points, centroids):
 
 == How does it fare?
 
+#image("imgs/performance-numba.png")
+
+#focus-slide[
+  We finally got on par!
+]
+
+#focus-slide(background: orange)[
+  Can we do better?
+]
 
 = Writing a C++ extension
+
+== The architecture
+
+#image(width: 70%, "imgs/stack.png")
+
+== Tools involved
+
+- `cmake`: a build system for C++
+- `nanobind`: a library to develop C++ extensions for Python
+- `uv`: to drive the installation process
+
+== Project scaffolding
+
+The environment and dependencies are managed by `uv`.
+
+`uv sync` creates `.venv/`, installs dependencies, and—because of the build backend below—compiles the C++ module into the environment in one shot.
+
+== Project scaffolding
+
+The basic directory structure is the following
+
+```
+.
+├── CMakeLists.txt
+├── main.py
+├── pyproject.toml
+├── supercharge
+│   ├── lib.cpp
+│   ├── lib.hpp
+│   └── wrapper.cpp
+└── uv.lock
+```
+
+== Configuring the Python side of the project
+
+#[
+
+#set text(size: .7em)
+
+```toml
+[dependency-groups]
+# ↓ this actually provides the bindings if you
+#   invoke CMake manually
+dev = ["nanobind>=2.12.0"]
+
+[build-system]
+# things listed here are downloaded as build dependencies
+requires = [
+  # ↓ this is required to interact with cmake
+  "scikit-build-core >=0.4.3",
+  # ↓ this is also required for the automatic invocation of CMake
+  "nanobind >= 2.12.0"
+]
+# here we replace the default build backend
+build-backend = "scikit_build_core.build"
+```
+]
+
+== Configuring CMake
+
+- Adding a new library compiled from our sources
+  ```CMake
+  add_library(supercharge_core STATIC supercharge/lib.cpp)
+  ```
+
+- Building the C++ code#footnote[does not make it visible to Python]
+  ```
+  cmake -S . -B build
+  ```
+
+== Configuring CMake
+
+#[
+#set text(size: .9em)
+
+1. Find the right Python — `find_package(Python 3.13 COMPONENTS Interpreter Development.Module REQUIRED)`.
+2. Locate nanobind via the interpreter — runs `python -m nanobind --cmake_dir` to set `nanobind_ROOT`, then `find_package(nanobind)`. This is why the venv must be active when running CMake directly — it asks the active interpreter where nanobind lives.
+3. Default to a Release build (otherwise you'd get an unoptimized debug build).
+4. PIC on the static core lib — `POSITION_INDEPENDENT_CODE ON`, because supercharge_core gets linked into a shared module; without it the Linux link fails.
+5. Enable SIMD — `target_compile_options(... -mavx2 -mfma)` so lib.cpp selects the vectorized path (-mfma lets the compiler fuse mul+add).
+6. Link OpenMP so the `#pragma omp parallel for` in `assign()` is honored.
+7. nanobind_add_module quirk — use the keyword form `target_link_libraries(supercharge PRIVATE ...)`; nanobind uses the keyword form internally, so mixing forms errors.
+8. Install rule — `install(TARGETS supercharge LIBRARY DESTINATION .)`. Without it `scikit-build-core` builds the module and then discards it, so import supercharge fails.
+]
+
+// - writing the kmeans function (basic version)
+// - writing the glue code
+// - setting up the build system

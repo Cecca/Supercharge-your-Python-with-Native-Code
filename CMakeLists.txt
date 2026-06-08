@@ -31,7 +31,7 @@ set_target_properties(supercharge_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # implementation. -mfma lets the compiler fuse the mul+add pairs into FMA.
 target_compile_options(supercharge_core PRIVATE -mavx2 -mfma)
 # Link OpenMP so the `#pragma omp parallel for` in assign() is honoured.
-target_link_libraries(supercharge_core PUBLIC OpenMP::OpenMP_CXX)
+target_link_libraries(supercharge_core OpenMP::OpenMP_CXX)
 
 nanobind_add_module(supercharge supercharge/wrapper.cpp)
 # PRIVATE is required: nanobind_add_module internally uses the keyword form of
