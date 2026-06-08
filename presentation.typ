@@ -19,6 +19,7 @@
 
 #set text(font: "Lato")
 
+#show image: set align(center)
 #show raw.where(block: true, lang: "python"): set text(size: .8em)
 #show raw.where(block: true, lang: "profile"): set text(size: .8em)
 
@@ -406,6 +407,205 @@ computation (`norm`)
   The bottleneck is still the distance computation, and we have a lot of ground to cover to reach sklearn
 ]
 
+== Why?
+
+The culprit is this line of the profile:
+
+```profile
+ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    20    2.205    0.110    6.211    0.311 /home/matteo/Work/Supercharge-your-Python-with-Native-Code/kmeans_numpy_a.py:4(assign_closest)
+```
+
+2 seconds are spent executing code in `assign_closest` that is not directly related to distance computations: running for loops in python is slow
+
+== Rewriting the computation (1)
+
+With the aim of reducing the number of `for` loops in Python, we can rewrite the computation into something that `numpy` is heavily optimized for.
+
+Observe that
+
+$
+||x - c||^2 =
+||x||^2 + ||c||^2 - 2 x dot c
+$
+
+We can thus precompute the norms of points ($x$) and centroids ($y$)
+and only compute dot products.
+
+== Rewriting the computation (2)
+
+We can also compute the distance between any point and any centroid with matrix operations:
+
+$
+  X_"sq" - X C^T + C_"sq"
+$
+
+where $X_"sq"$ and $C_"sq"$ are the vectors of squared norms of points and centroids
+
+== Rewriting the computation (2)
+
+#[
+#set text(size: .8em)
+The matrix multiplication effectively computes all the dot products we need.
+]
+
+#image(width: 65%, "imgs/dots.pdf")
+
+== Rewriting the computation (3)
+
+- The two ways of computing distances are mathematically equivalent
+- They are not _numerically_ equivalent, though: our newest expression is succeptible to _catastrophic cancellation_, where the result may even become negative!
+- This is a tradeoff to be aware of
+
+== A rewrite of the `numpy` implementation
+
+```python
+def assign_closest(points, centroids, points_sq=None):
+    if points_sq is None:
+        points_sq = np.linalg.norm(points, axis=1)**2
+    c_sq = np.linalg.norm(centroids, axis=1)**2
+    d = points_sq[:, None] - 2.0 * (points @ centroids.T) + c_sq[None, :]
+    # deal with the aforementioned tradeoff
+    np.maximum(d, 0.0, out=d)
+
+    assignment = np.argmin(d, axis=1)
+    wcss = float(np.min(d, axis=1).sum(dtype=np.float64))
+    return assignment, wcss
+```
+
+== How does it fare?
+
+#image("imgs/performance-numpy-matrix.png")
+
+== How does it fare?
+
+We got closer to the `sklearn` implementation.
+
+The gap is not closed yet because materializing the entire distance matrix (i.e. $X C^T$) is expensive in terms of memory.
+
 = Optimizing with `numba`
+
+== #box(height: 2em, image(alt: "numba", "imgs/numba.svg"))
+
+- a compiler for Python that translates Python to machine code using LLVM
+- works on a per-function basis
+- designed to work with numpy
+- gives access to parallelism
+
+== compiled vs. interpreted languages
+
+#[
+  #set text(size: .8em)
+
+  #cols[
+    *Interpreted* (e.g. Python)
+
+    - Source is executed by the _interpreter_, one statement at a time
+    - No separate build step: run the source directly
+    - Portable: the same source runs wherever the interpreter does
+    - Each operation pays the overhead of being decoded at run time
+    - Types are checked at run time
+  ][
+    *Compiled* (e.g. C, C++)
+
+    - Source is translated _ahead of time_ into machine code by a _compiler_
+    - Requires a build step, producing a platform-specific executable
+    - The CPU runs the machine code directly: no per-statement overhead
+    - The compiler can optimize aggressively (inlining, vectorization, ...)
+    - Types are checked at compile time
+  ]
+]
+
+#focus-slide[
+  #set text(size: .9em)
+  #show raw: set text(size: 1.1em)
+  
+  `numba` brings _just-in-time_ compilation to Python: it compiles
+  annotated functions to machine code the first time they are called.
+]
+
+== Using `numba`
+
+- Install: `uv add numba`
+- import with `from numba import njit`
+- Use: annotate functions with `@njit`
+- Only a subset of Python is allowed (e.g. no print statements can be used)
+
+
+== Using `numba`
+
+#[
+#show raw: set text(size: .9em)
+
+```python
+from numba import njit, prange
+import numpy as np
+
+@njit(fastmath=True, parallel=True)
+def euclidean_all(data: np.ndarray, centroids: np.ndarray):
+    dims = data.shape[1]
+    dists = np.empty((data.shape[0], centroids.shape[0]), dtype=np.float64)
+    for i in prange(data.shape[0]):
+        for c in range(centroids.shape[0]):
+            dist = 0.0
+            for j in range(dims):
+                diff = data[i,j] - centroids[c,j]
+                dist += diff*diff
+            dists[i,c] = dist
+    return dists
+```
+]
+
+
+== Using `numba`
+
+This code does not compile
+
+```python
+from numba import njit
+
+@njit
+def make_record():
+    # A dict whose values have different types (str and int).
+    # Plain Python is fine with this, but Numba's typed dict requires
+    # all values to share a single type, so this does not compile
+    # in nopython mode.
+    return {"name": "Alice", "age": 30}
+```
+
+
+== Example: the assignment loop
+
+```python
+@njit(parallel=True, fastmath=True, cache=True)
+def _assign(points, centroids):
+    n, dim = points.shape
+    k = centroids.shape[0]
+    assignment = np.empty(n, dtype=np.int64)
+    # ↓ this array can be used by the caller to compute the wcss
+    min_dist = np.empty(n, dtype=np.float64)
+    for i in prange(n): # <- Parallel loop!
+        best = 0
+        best_d = 0.0
+        for d in range(dim):
+            diff = points[i, d] - centroids[0, d]
+            best_d += diff * diff
+            # Continues on next slide
+            
+        for j in range(1, k):
+            dist = 0.0
+            for d in range(dim):
+                diff = points[i, d] - centroids[j, d]
+                dist += diff * diff
+            if dist < best_d:
+                best_d = dist
+                best = j
+        assignment[i] = best
+        min_dist[i] = best_d
+    return assignment, min_dist
+```
+
+== How does it fare?
+
 
 = Writing a C++ extension

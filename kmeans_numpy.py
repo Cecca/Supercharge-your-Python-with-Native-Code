@@ -5,8 +5,8 @@ def assign_closest(points, centroids, points_sq=None):
     # Vectorized over all points and centroids at once via
     # ||x - c||^2 = ||x||^2 - 2 x.c + ||c||^2, then pick the nearest centroid.
     if points_sq is None:
-        points_sq = np.einsum("ij,ij->i", points, points)
-    c_sq = np.einsum("ij,ij->i", centroids, centroids)
+        points_sq = np.linalg.norm(points, axis=1)**2
+    c_sq = np.linalg.norm(centroids, axis=1)**2
     d = points_sq[:, None] - 2.0 * (points @ centroids.T) + c_sq[None, :]
     np.maximum(d, 0.0, out=d)  # rounding can push exact zeros slightly negative
 
@@ -23,7 +23,7 @@ def random_centroids(points, k, seed=None):
 
 def lloyd(points, k, max_iter=300, epsilon=1e-4, seed=None):
     centroids = random_centroids(points, k, seed)
-    points_sq = np.einsum("ij,ij->i", points, points)  # constant across iterations
+    points_sq = np.linalg.norm(points, axis=1)**2  # constant across iterations
     prev_wcss = np.inf
 
     for _ in range(max_iter):
