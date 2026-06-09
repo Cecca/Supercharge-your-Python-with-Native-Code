@@ -17,13 +17,15 @@
   )
 )
 
+#title-slide[Supercharge your Python with Native Code]
+
 #set text(font: "Lato")
 
 #show image: set align(center)
 #show raw.where(block: true, lang: "python"): set text(size: .8em)
 #show raw.where(block: true, lang: "profile"): set text(size: .8em)
 
-#title-slide[]
+// #title-slide[]
 
 == Outline <touying:hidden>
 
