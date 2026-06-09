@@ -27,7 +27,7 @@
 
 == Outline <touying:hidden>
 
-#components.adaptive-columns(outline(title: none, indent: 1em))
+#components.adaptive-columns(outline(depth: 1, title: none, indent: 1em))
 
 = The case study
 
